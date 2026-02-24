@@ -19,6 +19,7 @@ export default function App() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "list" | "messages" | "settings">("map");
   const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Global geolocation watcher
   useEffect(() => {
@@ -50,7 +51,11 @@ export default function App() {
     e.preventDefault();
     if (!name.trim() || connecting) return;
     setConnecting(true);
-    await connect(name.trim(), role);
+    setConnectError(null);
+    const error = await connect(name.trim(), role);
+    if (error) {
+      setConnectError(error);
+    }
     setConnecting(false);
   };
 
@@ -74,6 +79,11 @@ export default function App() {
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white py-8 px-4 shadow sm:rounded-xl sm:px-10 border border-gray-100">
             <form className="space-y-6" onSubmit={handleConnect}>
+              {connectError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                  {connectError}
+                </div>
+              )}
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700">
                   Name

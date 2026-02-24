@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { supabase } from "./lib/supabase";
+import { supabase, supabaseConfigured } from "./lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export interface Location {
@@ -71,7 +71,7 @@ interface AppState {
   messages: Message[];
   channel: RealtimeChannel | null;
 
-  connect: (name: string, role: "driver" | "passenger") => Promise<void>;
+  connect: (name: string, role: "driver" | "passenger") => Promise<string | null>;
   updateLocation: (location: Location) => void;
   toggleOnline: (isOnline: boolean) => void;
   togglePremium: (isPremium: boolean) => void;
@@ -86,6 +86,11 @@ export const useStore = create<AppState>((set, get) => ({
   channel: null,
 
   connect: async (name, role) => {
+    // Check if Supabase is configured
+    if (!supabaseConfigured) {
+      return "Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.";
+    }
+
     // 1. Insert user into Supabase
     const { data: userData, error } = await supabase
       .from("users")
@@ -95,7 +100,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (error || !userData) {
       console.error("Failed to create user:", error);
-      return;
+      return error?.message || "Failed to connect. Please try again.";
     }
 
     const currentUser = mapUser(userData);
@@ -177,6 +182,8 @@ export const useStore = create<AppState>((set, get) => ({
     window.addEventListener("beforeunload", () => {
       supabase.from("users").delete().eq("id", currentUser.id).then();
     });
+
+    return null; // success
   },
 
   updateLocation: async (location) => {
