@@ -154,7 +154,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
+    <div style={{ height: '100dvh' }} className="flex flex-col bg-gray-100 overflow-hidden">
       {/* Header */}
       <header className="bg-white shadow-sm z-10 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -202,7 +202,7 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="bg-white border-t border-gray-200 z-10 pb-safe">
+      <nav className="bg-white border-t border-gray-200 z-10 pb-safe flex-shrink-0">
         <div className="max-w-md mx-auto flex justify-around">
           <button
             onClick={() => { setActiveTab("map"); setSelectedUser(null); }}

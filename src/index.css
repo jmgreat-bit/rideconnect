@@ -1,1 +1,30 @@
 @import "tailwindcss";
+
+/* Use dynamic viewport height on mobile */
+html, body, #root {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Safe area padding for phones with notches/gesture bars */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Fix Leaflet map container */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 1;
+}
+
+/* Leaflet popup buttons fix for mobile */
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+}
+
+.leaflet-popup-content button,
+.leaflet-popup-content a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
