@@ -256,16 +256,17 @@ export const useStore = create<AppState>((set, get) => ({
       const baseLat = currentUser?.lat || 37.7749;
       const baseLng = currentUser?.lng || -122.4194;
 
-      // Spawn 4 fake drivers
+      // Generate valid UUIDs for fake drivers so they pass UI validation if needed
+      // but we will still intercept their messages below
       const initialFakeUsers: User[] = Array.from({ length: 4 }).map((_, i) => ({
-        id: `demo-driver-${i}`,
+        id: `demo-driver-${i}`, // Kept for identification in sendMessage
         name: `Driver ${["Alice", "Bob", "Charlie", "Diana"][i]}`,
         role: "driver",
         lat: baseLat + (Math.random() - 0.5) * 0.02,
         lng: baseLng + (Math.random() - 0.5) * 0.02,
         is_online: true,
         is_premium: false,
-        location: { lat: 0, lng: 0 }, // Handled below
+        location: { lat: 0, lng: 0 },
         isOnline: true,
         isPremium: false,
       }));
@@ -299,6 +300,49 @@ export const useStore = create<AppState>((set, get) => ({
     const { currentUser } = get();
     if (!currentUser) return;
 
+    // 1. Is it a fake user? Bypass Supabase entirely!
+    if (to.startsWith("demo-driver-")) {
+      // Create a fake local message for the OUTGOING text
+      const fakeOutgoingMsg: Message = {
+        id: `local-msg-${Date.now()}`,
+        from_user: currentUser.id,
+        to_user: to,
+        text,
+        created_at: new Date().toISOString(),
+        from: currentUser.id,
+        to: to,
+        timestamp: Date.now()
+      };
+      
+      set((state) => ({ messages: [...state.messages, fakeOutgoingMsg] }));
+
+      // Trigger AI Response
+      const { fakeUsers } = get();
+      const driverObj = fakeUsers.find(u => u.id === to);
+      const driverName = driverObj ? driverObj.name.replace("Driver ", "") : "John";
+
+      setTimeout(async () => {
+        const aiReply = await generateDriverResponse(driverName, text);
+        
+        // Create fake local message for INCOMING text
+        const fakeIncomingMsg: Message = {
+          id: `local-msg-${Date.now() + 1}`,
+          from_user: to,
+          to_user: currentUser.id,
+          text: aiReply,
+          created_at: new Date().toISOString(),
+          from: to,
+          to: currentUser.id,
+          timestamp: Date.now() + 1
+        };
+
+        set((state) => ({ messages: [...state.messages, fakeIncomingMsg] }));
+      }, 1500 + Math.random() * 2000); // 1.5 to 3.5 sec delay
+      
+      return; // Stop here, do not hit Supabase!
+    }
+
+    // 2. Real user? Send to Supabase
     const { data, error } = await supabase
       .from("messages")
       .insert({ from_user: currentUser.id, to_user: to, text })
@@ -317,33 +361,6 @@ export const useStore = create<AppState>((set, get) => ({
       if (!messages.find((m) => m.id === msg.id)) {
         set({ messages: [...messages, msg] });
       }
-    }
-
-    // AI Check: If texting a demo driver, trigger AI response
-    if (to.startsWith("demo-driver-")) {
-      const { fakeUsers } = get();
-      const driverObj = fakeUsers.find(u => u.id === to);
-      const driverName = driverObj ? driverObj.name.replace("Driver ", "") : "John";
-
-      // Small delay to feel natural
-      setTimeout(async () => {
-        const aiReply = await generateDriverResponse(driverName, text);
-        
-        // Insert AI answer as if from driver
-        const { error: aiError, data: aiData } = await supabase
-          .from("messages")
-          .insert({ from_user: to, to_user: currentUser.id, text: aiReply })
-          .select()
-          .single();
-          
-        if (!aiError && aiData) {
-          const aiMsg = mapMessage(aiData);
-          const currentMsgs = get().messages;
-          if (!currentMsgs.find((m) => m.id === aiMsg.id)) {
-            set({ messages: [...currentMsgs, aiMsg] });
-          }
-        }
-      }, 1500 + Math.random() * 2000); // 1.5 to 3.5 sec delay
     }
   },
 
