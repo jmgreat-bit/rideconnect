@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { generateDriverResponse } from "./services/geminiService";
 
 export interface Location {
   lat: number;
@@ -316,6 +317,33 @@ export const useStore = create<AppState>((set, get) => ({
       if (!messages.find((m) => m.id === msg.id)) {
         set({ messages: [...messages, msg] });
       }
+    }
+
+    // AI Check: If texting a demo driver, trigger AI response
+    if (to.startsWith("demo-driver-")) {
+      const { fakeUsers } = get();
+      const driverObj = fakeUsers.find(u => u.id === to);
+      const driverName = driverObj ? driverObj.name.replace("Driver ", "") : "John";
+
+      // Small delay to feel natural
+      setTimeout(async () => {
+        const aiReply = await generateDriverResponse(driverName, text);
+        
+        // Insert AI answer as if from driver
+        const { error: aiError, data: aiData } = await supabase
+          .from("messages")
+          .insert({ from_user: to, to_user: currentUser.id, text: aiReply })
+          .select()
+          .single();
+          
+        if (!aiError && aiData) {
+          const aiMsg = mapMessage(aiData);
+          const currentMsgs = get().messages;
+          if (!currentMsgs.find((m) => m.id === aiMsg.id)) {
+            set({ messages: [...currentMsgs, aiMsg] });
+          }
+        }
+      }, 1500 + Math.random() * 2000); // 1.5 to 3.5 sec delay
     }
   },
 
