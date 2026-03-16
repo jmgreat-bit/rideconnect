@@ -18,7 +18,8 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
 
   const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
 
-  const allUsers = [...users, ...(demoMode ? fakeUsers : [])];
+  // If offline, you don't see anyone
+  const allUsers = currentUser.isOnline ? [...users, ...(demoMode ? fakeUsers : [])] : [];
 
   const visibleUsers = allUsers.filter((u) => {
     if (u.id === currentUser.id) return false;

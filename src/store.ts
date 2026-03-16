@@ -256,12 +256,15 @@ export const useStore = create<AppState>((set, get) => ({
       const baseLat = currentUser?.lat || 37.7749;
       const baseLng = currentUser?.lng || -122.4194;
 
+      const oppositeRole = currentUser?.role === "driver" ? "passenger" : "driver";
+      const namePrefix = oppositeRole === "driver" ? "Driver " : "Passenger ";
+
       // Generate valid UUIDs for fake drivers so they pass UI validation if needed
       // but we will still intercept their messages below
       const initialFakeUsers: User[] = Array.from({ length: 4 }).map((_, i) => ({
         id: `demo-driver-${i}`, // Kept for identification in sendMessage
-        name: `Driver ${["Alice", "Bob", "Charlie", "Diana"][i]}`,
-        role: "driver",
+        name: `${namePrefix}${["Alice", "Bob", "Charlie", "Diana"][i]}`,
+        role: oppositeRole,
         lat: baseLat + (Math.random() - 0.5) * 0.02,
         lng: baseLng + (Math.random() - 0.5) * 0.02,
         is_online: true,
@@ -319,10 +322,11 @@ export const useStore = create<AppState>((set, get) => ({
       // Trigger AI Response
       const { fakeUsers } = get();
       const driverObj = fakeUsers.find(u => u.id === to);
-      const driverName = driverObj ? driverObj.name.replace("Driver ", "") : "John";
+      const driverName = driverObj ? (driverObj.name.replace("Driver ", "").replace("Passenger ", "")) : "John";
+      const driverRole = driverObj ? driverObj.role : "driver";
 
       setTimeout(async () => {
-        const aiReply = await generateDriverResponse(driverName, text);
+        const aiReply = await generateDriverResponse(driverName, text, driverRole);
         
         // Create fake local message for INCOMING text
         const fakeIncomingMsg: Message = {

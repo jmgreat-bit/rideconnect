@@ -181,8 +181,8 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
   const position: [number, number] = [currentUser.location.lat, currentUser.location.lng];
   const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
 
-  // Combine real users and fake demo users
-  const allUsers = [...users, ...(demoMode ? fakeUsers : [])];
+  // If you are offline, you do not see anyone
+  const allUsers = currentUser.isOnline ? [...users, ...(demoMode ? fakeUsers : [])] : [];
 
   // Filter users based on role, distance, and online status
   const visibleUsers = allUsers.filter((u) => {
