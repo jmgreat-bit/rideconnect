@@ -3,7 +3,7 @@ import { getDistance } from "../utils";
 import { MessageSquare, MapPin } from "lucide-react";
 
 export default function UserList({ onSelectUser }: { onSelectUser: (user: User) => void }) {
-  const { currentUser, users } = useStore();
+  const { currentUser, users, fakeUsers, demoMode } = useStore();
   
   if (!currentUser || !currentUser.location) {
     return (
@@ -18,7 +18,9 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
 
   const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
 
-  const visibleUsers = users.filter((u) => {
+  const allUsers = [...users, ...(demoMode ? fakeUsers : [])];
+
+  const visibleUsers = allUsers.filter((u) => {
     if (u.id === currentUser.id) return false;
     if (!u.isOnline) return false;
     if (!u.location) return false;

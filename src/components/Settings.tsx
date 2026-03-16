@@ -2,7 +2,7 @@ import { useStore } from "../store";
 import { Shield, Wifi, LogOut } from "lucide-react";
 
 export default function Settings() {
-  const { currentUser, toggleOnline, togglePremium } = useStore();
+  const { currentUser, toggleOnline, togglePremium, demoMode, toggleDemoMode } = useStore();
   
   if (!currentUser) return null;
 
@@ -72,6 +72,33 @@ export default function Settings() {
                 <span
                   className={`${
                     currentUser.isPremium ? "translate-x-7" : "translate-x-0"
+                  } pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                />
+              </button>
+            </div>
+
+            <div className="h-px bg-gray-100 mx-4"></div>
+
+            {/* Demo Mode Toggle */}
+            <div className="flex items-center justify-between p-4 hover:bg-gray-50 rounded-xl transition-colors">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${demoMode ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                  <Shield size={24} /> {/* could use a bot or play icon but Shield works for now */}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-lg">UNIPOD Demo Mode</p>
+                  <p className="text-sm text-gray-500">Spawn fake moving drivers for the pitch</p>
+                </div>
+              </div>
+              <button
+                onClick={() => toggleDemoMode(!demoMode)}
+                className={`${
+                  demoMode ? "bg-orange-500" : "bg-gray-200"
+                } relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2`}
+              >
+                <span
+                  className={`${
+                    demoMode ? "translate-x-7" : "translate-x-0"
                   } pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                 />
               </button>

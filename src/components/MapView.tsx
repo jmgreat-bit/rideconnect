@@ -134,7 +134,7 @@ function formatDistance(meters: number): string {
 }
 
 export default function MapView({ onSelectUser }: { onSelectUser: (user: User) => void }) {
-  const { currentUser, users } = useStore();
+  const { currentUser, users, fakeUsers, demoMode } = useStore();
 
   // Navigation state
   const [routeTo, setRouteTo] = useState<[number, number] | null>(null);
@@ -181,8 +181,11 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
   const position: [number, number] = [currentUser.location.lat, currentUser.location.lng];
   const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
 
+  // Combine real users and fake demo users
+  const allUsers = [...users, ...(demoMode ? fakeUsers : [])];
+
   // Filter users based on role, distance, and online status
-  const visibleUsers = users.filter((u) => {
+  const visibleUsers = allUsers.filter((u) => {
     if (u.id === currentUser.id) return false;
     if (!u.isOnline) return false;
     if (!u.location) return false;

@@ -71,17 +71,25 @@ interface AppState {
   messages: Message[];
   channel: RealtimeChannel | null;
 
+  demoMode: boolean;
+  fakeUsers: User[];
+
   connect: (name: string, role: "driver" | "passenger") => Promise<string | null>;
   updateLocation: (location: Location) => void;
   toggleOnline: (isOnline: boolean) => void;
   togglePremium: (isPremium: boolean) => void;
+  toggleDemoMode: (enabled: boolean) => void;
   sendMessage: (to: string, text: string) => void;
   cleanup: () => void;
 }
 
+let demoInterval: any = null;
+
 export const useStore = create<AppState>((set, get) => ({
   currentUser: null,
   users: [],
+  demoMode: false,
+  fakeUsers: [],
   messages: [],
   channel: null,
 
@@ -233,6 +241,57 @@ export const useStore = create<AppState>((set, get) => ({
       .from("users")
       .update({ is_premium: isPremium })
       .eq("id", currentUser.id);
+  },
+
+  toggleDemoMode: (enabled) => {
+    set({ demoMode: enabled });
+    if (demoInterval) {
+      clearInterval(demoInterval);
+      demoInterval = null;
+    }
+
+    if (enabled) {
+      const { currentUser } = get();
+      const baseLat = currentUser?.lat || 37.7749;
+      const baseLng = currentUser?.lng || -122.4194;
+
+      // Spawn 4 fake drivers
+      const initialFakeUsers: User[] = Array.from({ length: 4 }).map((_, i) => ({
+        id: `demo-driver-${i}`,
+        name: `Driver ${["Alice", "Bob", "Charlie", "Diana"][i]}`,
+        role: "driver",
+        lat: baseLat + (Math.random() - 0.5) * 0.02,
+        lng: baseLng + (Math.random() - 0.5) * 0.02,
+        is_online: true,
+        is_premium: false,
+        location: { lat: 0, lng: 0 }, // Handled below
+        isOnline: true,
+        isPremium: false,
+      }));
+
+      // Update location objects
+      initialFakeUsers.forEach(u => u.location = { lat: u.lat!, lng: u.lng! });
+
+      set({ fakeUsers: initialFakeUsers });
+
+      // Move them randomly every 3 seconds
+      demoInterval = setInterval(() => {
+        set((state) => ({
+          fakeUsers: state.fakeUsers.map((u) => {
+            const newLat = u.lat! + (Math.random() - 0.5) * 0.001;
+            const newLng = u.lng! + (Math.random() - 0.5) * 0.001;
+            return {
+              ...u,
+              lat: newLat,
+              lng: newLng,
+              location: { lat: newLat, lng: newLng }
+            };
+          })
+        }));
+      }, 3000);
+    } else {
+      set({ fakeUsers: [] });
+    }
   },
 
   sendMessage: async (to, text) => {

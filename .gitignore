@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 supabase_migration.sql
+
+.vercel
+.env*.local
