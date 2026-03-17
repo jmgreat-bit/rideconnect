@@ -20,6 +20,18 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"map" | "list" | "messages" | "settings">("map");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [locationPermission, setLocationPermission] = useState<"prompt" | "granted" | "denied">("prompt");
+
+  useEffect(() => {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: "geolocation" }).then((result) => {
+        setLocationPermission(result.state as any);
+        result.onchange = () => {
+          setLocationPermission(result.state as any);
+        };
+      });
+    }
+  }, []);
 
   // Global geolocation watcher
   useEffect(() => {
@@ -27,7 +39,7 @@ export default function App() {
 
     if (!navigator.geolocation) {
       console.error("Geolocation is not supported by your browser");
-      const defaultLoc: [number, number] = [37.7749, -122.4194];
+      const defaultLoc: [number, number] = [-1.9441, 30.0619]; // Kigali
       updateLocation({ lat: defaultLoc[0], lng: defaultLoc[1] });
       return;
     }
@@ -38,7 +50,7 @@ export default function App() {
       },
       (err) => {
         console.error("Error getting location:", err);
-        const defaultLoc: [number, number] = [37.7749, -122.4194];
+        const defaultLoc: [number, number] = [-1.9441, 30.0619]; // Kigali
         updateLocation({ lat: defaultLoc[0], lng: defaultLoc[1] });
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
@@ -61,27 +73,32 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-6 px-4">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="flex justify-center">
-            <div className="h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <Map className="text-white h-8 w-8" />
+            <div className="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+              <Map className="text-white h-6 w-6" />
             </div>
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-4 text-center text-2xl font-extrabold text-gray-900">
             RideConnect
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-1 text-center text-sm text-gray-600">
             Find rides or passengers instantly
           </p>
         </div>
 
-        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="bg-white py-8 px-4 shadow sm:rounded-xl sm:px-10 border border-gray-100">
+        <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white py-6 px-6 shadow-lg rounded-2xl border border-gray-100">
             <form className="space-y-6" onSubmit={handleConnect}>
               {connectError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
                   {connectError}
+                </div>
+              )}
+              {locationPermission === "denied" && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                  ⚠️ <strong>Location access denied.</strong> We need your GPS to show you on the map. Please enable location in your browser settings.
                 </div>
               )}
               <div>
@@ -103,9 +120,9 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">I am a...</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className={`cursor-pointer border rounded-xl p-4 flex flex-col items-center justify-center transition-all ${role === 'passenger' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">I am a...</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center transition-all ${role === 'passenger' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
                     <input
                       type="radio"
                       className="sr-only"
@@ -114,9 +131,9 @@ export default function App() {
                       checked={role === "passenger"}
                       onChange={() => setRole("passenger")}
                     />
-                    <span className="font-semibold">Passenger</span>
+                    <span className="font-semibold text-sm">Passenger</span>
                   </label>
-                  <label className={`cursor-pointer border rounded-xl p-4 flex flex-col items-center justify-center transition-all ${role === 'driver' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
+                  <label className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center transition-all ${role === 'driver' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
                     <input
                       type="radio"
                       className="sr-only"
@@ -125,7 +142,7 @@ export default function App() {
                       checked={role === "driver"}
                       onChange={() => setRole("driver")}
                     />
-                    <span className="font-semibold">Driver</span>
+                    <span className="font-semibold text-sm">Driver</span>
                   </label>
                 </div>
               </div>

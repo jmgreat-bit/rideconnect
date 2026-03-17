@@ -27,6 +27,9 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
     if (!u.location) return false;
     if (u.role === currentUser.role) return false;
 
+    const isStale = u.last_seen ? new Date(u.last_seen).getTime() < Date.now() - 2 * 60 * 1000 : false;
+    if (isStale && !u.id.startsWith("demo-driver-")) return false;
+
     const distance = getDistance(
       currentUser.location!.lat,
       currentUser.location!.lng,

@@ -20,6 +20,7 @@ export interface User {
   location: Location | null;
   isOnline: boolean;
   isPremium: boolean;
+  last_seen?: string;
 }
 
 export interface Message {
@@ -48,6 +49,7 @@ function mapUser(row: any): User {
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
     isOnline: row.is_online,
     isPremium: row.is_premium,
+    last_seen: row.last_seen,
   };
 }
 
@@ -85,6 +87,8 @@ interface AppState {
 }
 
 let demoInterval: any = null;
+let heartbeatInterval: any = null;
+const KIGALI_CENTER = { lat: -1.9441, lng: 30.0619 };
 
 export const useStore = create<AppState>((set, get) => ({
   currentUser: null,
@@ -100,10 +104,18 @@ export const useStore = create<AppState>((set, get) => ({
       return "Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.";
     }
 
-    // 1. Insert user into Supabase
+    // 1. Insert user into Supabase (Default to Kigali)
     const { data: userData, error } = await supabase
       .from("users")
-      .insert({ name, role, is_online: false, is_premium: false })
+      .insert({ 
+        name, 
+        role, 
+        is_online: false, 
+        is_premium: false,
+        lat: KIGALI_CENTER.lat,
+        lng: KIGALI_CENTER.lng,
+        last_seen: new Date().toISOString()
+      })
       .select()
       .single();
 
@@ -115,10 +127,12 @@ export const useStore = create<AppState>((set, get) => ({
     const currentUser = mapUser(userData);
     set({ currentUser });
 
-    // 2. Fetch all existing users
+    // 2. Fetch all existing users (only active in last 5 min)
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: allUsers } = await supabase
       .from("users")
-      .select("*");
+      .select("*")
+      .gt("last_seen", fiveMinAgo);
 
     if (allUsers) {
       set({ users: allUsers.map(mapUser) });
@@ -187,9 +201,24 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ channel });
 
-    // 5. Cleanup on page unload — mark user offline and delete
+    // 5. Start Heartbeat (every 30s)
+    heartbeatInterval = setInterval(() => {
+      const { currentUser } = get();
+      if (currentUser) {
+        supabase
+          .from("users")
+          .update({ last_seen: new Date().toISOString() })
+          .eq("id", currentUser.id)
+          .then();
+      }
+    }, 30000);
+
+    // 6. Cleanup on page unload — mark user offline and delete
     window.addEventListener("beforeunload", () => {
-      supabase.from("users").delete().eq("id", currentUser.id).then();
+      const { currentUser } = get();
+      if (currentUser) {
+        supabase.from("users").delete().eq("id", currentUser.id).then();
+      }
     });
 
     return null; // success
@@ -375,6 +404,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
     if (currentUser) {
       supabase.from("users").delete().eq("id", currentUser.id).then();
+    }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
     }
     set({ currentUser: null, users: [], messages: [], channel: null });
   },
