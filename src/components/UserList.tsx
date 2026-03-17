@@ -27,9 +27,8 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
     if (!u.location) return false;
     if (u.role === currentUser.role) return false;
 
-    // If no heartbeat for 15 seconds, consider stale
-    const isStale = u.last_seen ? new Date(u.last_seen).getTime() < Date.now() - 15 * 1000 : false;
-    if (isStale && !u.id.startsWith("demo-driver-")) return false;
+    // Removed aggressive client-side stale check (fails on clock drift)
+    // Relying on is_online and server-side gt(last_seen) filtering in the store
 
     const distance = getDistance(
       currentUser.location!.lat,
@@ -38,7 +37,7 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
       u.location.lng
     );
 
-    return distance <= visibilityRadius;
+    return distance <= 50; // Increased to 50km for demo sync
   });
 
   return (

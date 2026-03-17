@@ -179,7 +179,7 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
   }
 
   const position: [number, number] = [currentUser.location.lat, currentUser.location.lng];
-  const visibilityRadius = currentUser.isPremium ? 10 : 3; // Increased for better demo experience (3km default)
+  const visibilityRadius = 50; // Set to 50km for Demo/Pitch to ensure everyone sees everyone in the same city
 
   // If you are offline, you do not see anyone
   const allUsers = currentUser.isOnline ? [...users, ...(demoMode ? fakeUsers : [])] : [];
@@ -191,10 +191,9 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
     if (!u.location) return false;
     if (u.role === currentUser.role) return false;
 
-    // If no heartbeat for 15 seconds, consider stale (live feel)
-    const isStale = u.last_seen ? new Date(u.last_seen).getTime() < Date.now() - 15 * 1000 : false;
-    if (isStale && !u.id.startsWith("demo-driver-")) return false;
-
+    // Removed aggressive client-side stale check as it fails if phone clocks are not perfectly synced
+    // We rely on the store's is_online and server-side heartbeat filtering instead.
+    
     const distance = getDistance(
       position[0],
       position[1],
@@ -441,9 +440,17 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
           <div className="text-xs text-gray-400 font-medium">
             Showing within {visibilityRadius}km
           </div>
-          {visibleUsers.length === 0 && (
+          {!currentUser.isOnline ? (
+            <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-red-600 font-bold animate-pulse">
+              You are OFFLINE. Go to Settings and toggle "Go Online" to see others.
+            </div>
+          ) : visibleUsers.length === 0 && (
             <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-amber-600 font-medium">
-              No {currentUser.role === 'driver' ? 'passengers' : 'drivers'} found within {visibilityRadius}km
+              {allUsers.length > 1 ? (
+                <span>Found {allUsers.length - 1} others, but they are either the same role or &gt; {visibilityRadius}km away.</span>
+              ) : (
+                <span>No {currentUser.role === 'driver' ? 'passengers' : 'drivers'} found within {visibilityRadius}km</span>
+              )}
             </div>
           )}
         </div>
