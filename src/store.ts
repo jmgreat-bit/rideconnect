@@ -201,25 +201,38 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ channel });
 
-    // 5. Start Heartbeat (every 30s)
-    heartbeatInterval = setInterval(() => {
+    // 5. Start Heartbeat (every 5s for "Live" feel)
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(async () => {
       const { currentUser } = get();
       if (currentUser) {
-        supabase
-          .from("users")
-          .update({ last_seen: new Date().toISOString() })
-          .eq("id", currentUser.id)
-          .then();
+        try {
+          await supabase
+            .from("users")
+            .update({ last_seen: new Date().toISOString() })
+            .eq("id", currentUser.id);
+        } catch (err) {
+          console.error("Heartbeat failed:", err);
+        }
       }
-    }, 30000);
+    }, 5000);
 
-    // 6. Cleanup on page unload — mark user offline and delete
-    window.addEventListener("beforeunload", () => {
+    // 6. Cleanup — mark user offline and delete
+    const cleanupUser = async () => {
       const { currentUser } = get();
       if (currentUser) {
-        supabase.from("users").delete().eq("id", currentUser.id).then();
+        try {
+          // Use synchronous-looking but backgrounded delete
+          await supabase.from("users").delete().eq("id", currentUser.id);
+        } catch (e) {
+          console.error("Cleanup error:", e);
+        }
       }
-    });
+    };
+
+    window.addEventListener("beforeunload", cleanupUser);
+    window.addEventListener("unload", cleanupUser);
+    window.addEventListener("pagehide", cleanupUser); // Better for mobile safari/chrome
 
     return null; // success
   },
@@ -239,10 +252,14 @@ export const useStore = create<AppState>((set, get) => ({
     });
 
     // Update in Supabase
-    await supabase
-      .from("users")
-      .update({ lat: location.lat, lng: location.lng, last_seen: new Date().toISOString() })
-      .eq("id", currentUser.id);
+    try {
+      await supabase
+        .from("users")
+        .update({ lat: location.lat, lng: location.lng, last_seen: new Date().toISOString() })
+        .eq("id", currentUser.id);
+    } catch (err) {
+      console.error("Location update failed:", err);
+    }
   },
 
   toggleOnline: async (isOnline) => {
