@@ -179,7 +179,7 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
   }
 
   const position: [number, number] = [currentUser.location.lat, currentUser.location.lng];
-  const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
+  const visibilityRadius = currentUser.isPremium ? 10 : 3; // Increased for better demo experience (3km default)
 
   // If you are offline, you do not see anyone
   const allUsers = currentUser.isOnline ? [...users, ...(demoMode ? fakeUsers : [])] : [];
@@ -441,6 +441,11 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
           <div className="text-xs text-gray-400 font-medium">
             Showing within {visibilityRadius}km
           </div>
+          {visibleUsers.length === 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-amber-600 font-medium">
+              No {currentUser.role === 'driver' ? 'passengers' : 'drivers'} found within {visibilityRadius}km
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -160,12 +160,22 @@ export const useStore = create<AppState>((set, get) => ({
 
           if (payload.eventType === "INSERT") {
             const newUser = mapUser(payload.new);
+            console.log("New user joined:", newUser.name);
             set({ users: [...users, newUser] });
           } else if (payload.eventType === "UPDATE") {
             const updatedUser = mapUser(payload.new);
-            set({
-              users: users.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
-            });
+            const exists = users.find((u) => u.id === updatedUser.id);
+            
+            if (exists) {
+              set({
+                users: users.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
+              });
+            } else {
+              // UPSERT: Add user if they weren't in our list (e.g. they were stale)
+              console.log("User became active:", updatedUser.name);
+              set({ users: [...users, updatedUser] });
+            }
+
             // Update currentUser if it's us
             const { currentUser } = get();
             if (currentUser && currentUser.id === updatedUser.id) {
