@@ -4,6 +4,8 @@ import { useStore, User } from "../store";
 export default function Chat({ selectedUser, onClose }: { selectedUser: User; onClose: () => void }) {
   const { currentUser, messages, sendMessage } = useStore();
   const [text, setText] = useState("");
+  const [sendStatus, setSendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorDetail, setErrorDetail] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -22,6 +24,23 @@ export default function Chat({ selectedUser, onClose }: { selectedUser: User; on
       (m.from === currentUser.id && m.to === selectedUser.id) ||
       (m.from === selectedUser.id && m.to === currentUser.id)
   );
+
+  const handleSend = async () => {
+    if (!text.trim()) return;
+    const msgText = text.trim();
+    setText("");
+    setSendStatus("sending");
+    setErrorDetail("");
+    
+    try {
+      await sendMessage(selectedUser.id, msgText);
+      setSendStatus("sent");
+      setTimeout(() => setSendStatus("idle"), 2000);
+    } catch (err: any) {
+      setSendStatus("error");
+      setErrorDetail(err?.message || "Unknown error");
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
@@ -47,12 +66,25 @@ export default function Chat({ selectedUser, onClose }: { selectedUser: User; on
         </button>
       </div>
 
+      {/* Debug info bar */}
+      <div className="px-4 py-1.5 bg-gray-100 border-b border-gray-200 text-[10px] text-gray-500 font-mono flex justify-between">
+        <span>You: {currentUser.id.substring(0, 8)}...</span>
+        <span>To: {selectedUser.id.substring(0, 8)}...</span>
+        <span>
+          {sendStatus === "sending" && "⏳ Sending..."}
+          {sendStatus === "sent" && "✅ Sent!"}
+          {sendStatus === "error" && `❌ ${errorDetail || "Failed"}`}
+          {sendStatus === "idle" && `💬 ${chatMessages.length} msgs`}
+        </span>
+      </div>
+
       {/* Messages Area */}
       <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
         <div className="space-y-4">
           {chatMessages.length === 0 ? (
             <div className="text-center text-gray-500 text-sm mt-10">
-              No messages yet. Start a conversation!
+              <p>No messages yet. Send one below!</p>
+              <p className="text-xs text-gray-400 mt-2">Messages sync every ~5 seconds</p>
             </div>
           ) : (
             chatMessages.map((msg) => {
@@ -94,10 +126,7 @@ export default function Chat({ selectedUser, onClose }: { selectedUser: User; on
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (text.trim()) {
-              sendMessage(selectedUser.id, text.trim());
-              setText("");
-            }
+            handleSend();
           }}
           className="flex space-x-3"
         >
@@ -110,10 +139,10 @@ export default function Chat({ selectedUser, onClose }: { selectedUser: User; on
           />
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() || sendStatus === "sending"}
             className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
           >
-            Send
+            {sendStatus === "sending" ? "..." : "Send"}
           </button>
         </form>
       </div>
