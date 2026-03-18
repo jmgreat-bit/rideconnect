@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useStore, User } from "./store";
 import MapView from "./components/MapView";
 import Chat from "./components/Chat";
@@ -13,7 +13,7 @@ import Settings from "./components/Settings";
 import { Map, List, MessageCircle, Settings as SettingsIcon } from "lucide-react";
 
 export default function App() {
-  const { currentUser, connect, updateLocation } = useStore();
+  const { currentUser, messages, connect, updateLocation } = useStore();
   const [name, setName] = useState("");
   const [role, setRole] = useState<"driver" | "passenger">("passenger");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -21,6 +21,12 @@ export default function App() {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [locationPermission, setLocationPermission] = useState<"prompt" | "granted" | "denied">("prompt");
+
+  // ── Notification State ──
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [toast, setToast] = useState<{ text: string; from: string } | null>(null);
+  const lastSeenMsgCount = useRef(0);
+  const toastTimer = useRef<any>(null);
 
   useEffect(() => {
     if (navigator.permissions && navigator.permissions.query) {
@@ -55,7 +61,6 @@ export default function App() {
         },
         (err) => {
           console.warn("GPS error (retrying):", err.message);
-          // Don't give up! Retry with lower accuracy after 3 seconds
           if (highAccuracy) {
             retryTimeout = setTimeout(() => startWatching(false), 3000);
           }
@@ -71,6 +76,66 @@ export default function App() {
       if (retryTimeout) clearTimeout(retryTimeout);
     };
   }, [currentUser, updateLocation]);
+
+  // ── Watch for new incoming messages → badge + toast ──
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // On first load, just set the baseline
+    if (lastSeenMsgCount.current === 0) {
+      lastSeenMsgCount.current = messages.length;
+      return;
+    }
+
+    // Check if new messages arrived
+    if (messages.length > lastSeenMsgCount.current) {
+      const newMessages = messages.slice(lastSeenMsgCount.current);
+      const incomingMessages = newMessages.filter(m => m.from !== currentUser.id);
+      
+      if (incomingMessages.length > 0) {
+        const lastMsg = incomingMessages[incomingMessages.length - 1];
+        
+        // Only show badge if NOT on Messages tab AND not already chatting with this user
+        if (activeTab !== "messages" || !selectedUser) {
+          setUnreadCount(prev => prev + incomingMessages.length);
+        }
+
+        // Show toast
+        // Find sender's name from users list
+        const { users, fakeUsers } = useStore.getState();
+        const allKnown = [...users, ...fakeUsers];
+        const sender = allKnown.find(u => u.id === lastMsg.from);
+        const senderName = sender?.name || "Someone";
+
+        setToast({ text: lastMsg.text, from: senderName });
+        
+        // Auto-dismiss toast after 4 seconds
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToast(null), 4000);
+
+        // Vibrate on mobile if supported
+        if (navigator.vibrate) {
+          navigator.vibrate(200);
+        }
+      }
+    }
+
+    lastSeenMsgCount.current = messages.length;
+  }, [messages, currentUser, activeTab, selectedUser]);
+
+  // ── When clicking "Message" on a user from Map or List ──
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setActiveTab("messages"); // Navigate to messages tab
+    setUnreadCount(0); // Clear badge
+  };
+
+  // ── When clicking Messages tab ──
+  const handleMessagesTab = () => {
+    setActiveTab("messages");
+    setSelectedUser(null);
+    setUnreadCount(0); // Clear badge
+  };
 
   const handleConnect = async (e: FormEvent) => {
     e.preventDefault();
@@ -185,6 +250,28 @@ export default function App() {
 
   return (
     <div style={{ height: '100dvh' }} className="flex flex-col bg-gray-100 overflow-hidden">
+      {/* ── Toast Notification ── */}
+      {toast && (
+        <div 
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] animate-slide-down cursor-pointer"
+          onClick={() => {
+            setToast(null);
+            handleMessagesTab();
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-indigo-100 p-4 flex items-start gap-3">
+            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+              {toast.from.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900">{toast.from}</p>
+              <p className="text-sm text-gray-600 truncate">{toast.text}</p>
+            </div>
+            <span className="text-xs text-indigo-500 font-medium whitespace-nowrap">Tap to view</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm z-10 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -217,9 +304,9 @@ export default function App() {
       <main className="flex-1 overflow-hidden relative flex">
         {/* Main View Area */}
         <div className={`flex-1 transition-all duration-300 ${selectedUser ? "hidden md:block" : "block"}`}>
-          {activeTab === "map" && <MapView onSelectUser={setSelectedUser} />}
-          {activeTab === "list" && <UserList onSelectUser={setSelectedUser} />}
-          {activeTab === "messages" && <Inbox onSelectUser={setSelectedUser} />}
+          {activeTab === "map" && <MapView onSelectUser={handleSelectUser} />}
+          {activeTab === "list" && <UserList onSelectUser={handleSelectUser} />}
+          {activeTab === "messages" && <Inbox onSelectUser={handleSelectUser} />}
           {activeTab === "settings" && <Settings />}
         </div>
 
@@ -249,10 +336,17 @@ export default function App() {
             <span className="text-xs mt-1 font-medium">List</span>
           </button>
           <button
-            onClick={() => { setActiveTab("messages"); setSelectedUser(null); }}
-            className={`flex flex-col items-center py-3 px-4 flex-1 ${activeTab === "messages" ? "text-indigo-600" : "text-gray-500 hover:text-gray-900"}`}
+            onClick={handleMessagesTab}
+            className={`flex flex-col items-center py-3 px-4 flex-1 relative ${activeTab === "messages" ? "text-indigo-600" : "text-gray-500 hover:text-gray-900"}`}
           >
-            <MessageCircle size={24} className={activeTab === "messages" ? "fill-indigo-50" : ""} />
+            <div className="relative">
+              <MessageCircle size={24} className={activeTab === "messages" ? "fill-indigo-50" : ""} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold animate-bounce">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </div>
             <span className="text-xs mt-1 font-medium">Messages</span>
           </button>
           <button
