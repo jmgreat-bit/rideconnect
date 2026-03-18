@@ -132,9 +132,23 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser });
 
     // ──────────────────────────────────────────
-    // FIX #4: Fetch ALL users, no last_seen filter.
-    // We rely on is_online for visibility, not timestamps.
+    // FIX: PURGE GHOST USERS on connect
+    // Delete any users whose last_seen is older than 2 minutes.
+    // These are leftover records from sessions that didn't clean up.
     // ──────────────────────────────────────────
+    const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    try {
+      await supabase
+        .from("users")
+        .delete()
+        .lt("last_seen", twoMinAgo)
+        .neq("id", currentUser.id);
+      console.log("[CLEANUP] Purged ghost users older than 2 minutes");
+    } catch (err) {
+      console.error("Ghost cleanup failed:", err);
+    }
+
+    // Fetch remaining users (after ghost cleanup)
     const { data: allUsers } = await supabase
       .from("users")
       .select("*");
@@ -238,39 +252,35 @@ export const useStore = create<AppState>((set, get) => ({
     }, 5000);
 
     // ──────────────────────────────────────────
-    // FIX #3: Remove old cleanup listeners before adding new ones
-    // This prevents stacking and double-delete crashes
+    // FIX: Remove `pagehide` — it fires when switching tabs!
+    // Only use `beforeunload` and mark OFFLINE instead of deleting.
+    // The stale cleanup on next connect will handle actual deletion.
     // ──────────────────────────────────────────
     if (cleanupHandler) {
       window.removeEventListener("beforeunload", cleanupHandler);
-      window.removeEventListener("pagehide", cleanupHandler);
     }
 
     cleanupHandler = () => {
       const { currentUser: cu } = get();
       if (cu) {
-        // Use navigator.sendBeacon for reliable cleanup on mobile
-        if (navigator.sendBeacon && supabaseConfigured) {
+        // Mark offline instead of deleting — more reliable
+        // sendBeacon is the only way to reliably send data during unload
+        if (navigator.sendBeacon) {
           const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/users?id=eq.${cu.id}`;
-          const headers = {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          };
-          // sendBeacon can't do DELETE, so we set is_online = false instead
           navigator.sendBeacon(
-            `${url}&select=id`,
-            new Blob([JSON.stringify({ is_online: false })], { type: 'application/json' })
+            url,
+            new Blob(
+              [JSON.stringify({ is_online: false })],
+              { type: 'application/json' }
+            )
           );
         }
-        // Also try the normal Supabase call (works in desktop browsers)
-        supabase.from("users").delete().eq("id", cu.id).then();
+        // Fallback: try supabase call (may not complete)
+        supabase.from("users").update({ is_online: false }).eq("id", cu.id).then();
       }
     };
 
     window.addEventListener("beforeunload", cleanupHandler);
-    window.addEventListener("pagehide", cleanupHandler);
 
     return null; // success
   },
@@ -473,7 +483,8 @@ export const useStore = create<AppState>((set, get) => ({
       supabase.removeChannel(channel);
     }
     if (currentUser) {
-      supabase.from("users").delete().eq("id", currentUser.id).then();
+      // Mark offline, don't delete — stale cleanup will handle it
+      supabase.from("users").update({ is_online: false }).eq("id", currentUser.id).then();
     }
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
@@ -485,7 +496,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
     if (cleanupHandler) {
       window.removeEventListener("beforeunload", cleanupHandler);
-      window.removeEventListener("pagehide", cleanupHandler);
       cleanupHandler = null;
     }
     set({ currentUser: null, users: [], messages: [], channel: null, fakeUsers: [], demoMode: false });

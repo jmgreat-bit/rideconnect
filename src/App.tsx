@@ -39,24 +39,37 @@ export default function App() {
 
     if (!navigator.geolocation) {
       console.error("Geolocation is not supported by your browser");
-      const defaultLoc: [number, number] = [-1.9441, 30.0619]; // Kigali
-      updateLocation({ lat: defaultLoc[0], lng: defaultLoc[1] });
+      updateLocation({ lat: -1.9441, lng: 30.0619 });
       return;
     }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        updateLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      },
-      (err) => {
-        console.error("Error getting location:", err);
-        const defaultLoc: [number, number] = [-1.9441, 30.0619]; // Kigali
-        updateLocation({ lat: defaultLoc[0], lng: defaultLoc[1] });
-      },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-    );
+    let watchId: number | null = null;
+    let retryTimeout: any = null;
 
-    return () => navigator.geolocation.clearWatch(watchId);
+    const startWatching = (highAccuracy: boolean) => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          updateLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        (err) => {
+          console.warn("GPS error (retrying):", err.message);
+          // Don't give up! Retry with lower accuracy after 3 seconds
+          if (highAccuracy) {
+            retryTimeout = setTimeout(() => startWatching(false), 3000);
+          }
+        },
+        { enableHighAccuracy: highAccuracy, maximumAge: 15000, timeout: 10000 }
+      );
+    };
+
+    startWatching(true);
+
+    return () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
   }, [currentUser, updateLocation]);
 
   const handleConnect = async (e: FormEvent) => {
