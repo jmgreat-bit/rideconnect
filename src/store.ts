@@ -132,18 +132,18 @@ export const useStore = create<AppState>((set, get) => ({
     set({ currentUser });
 
     // ──────────────────────────────────────────
-    // FIX: PURGE GHOST USERS on connect
-    // Delete any users whose last_seen is older than 2 minutes.
-    // These are leftover records from sessions that didn't clean up.
+    // FIX: Mark stale users OFFLINE (not delete!)
+    // Deleting users cascades and destroys all their messages.
+    // Mark them offline so they disappear from the map but messages survive.
     // ──────────────────────────────────────────
     const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     try {
       await supabase
         .from("users")
-        .delete()
+        .update({ is_online: false })
         .lt("last_seen", twoMinAgo)
         .neq("id", currentUser.id);
-      console.log("[CLEANUP] Purged ghost users older than 2 minutes");
+      console.log("[CLEANUP] Marked stale users offline (older than 2 minutes)");
     } catch (err) {
       console.error("Ghost cleanup failed:", err);
     }
@@ -263,7 +263,7 @@ export const useStore = create<AppState>((set, get) => ({
         console.error("User poll failed:", err);
       }
 
-      // C. FALLBACK: Poll for messages
+      // C. FALLBACK: Poll for messages (always update — don't compare lengths)
       try {
         const { data: existingMsgs } = await supabase
           .from("messages")
@@ -273,8 +273,10 @@ export const useStore = create<AppState>((set, get) => ({
         
         if (existingMsgs) {
           const newMessages = existingMsgs.map(mapMessage);
-          // Only update state if length changed to prevent React component thrashing
-          if (newMessages.length !== currentMessages.length) {
+          // Compare latest message ID to avoid unnecessary re-renders
+          const currentLatestId = currentMessages.length > 0 ? currentMessages[currentMessages.length - 1].id : null;
+          const newLatestId = newMessages.length > 0 ? newMessages[newMessages.length - 1].id : null;
+          if (currentLatestId !== newLatestId || newMessages.length !== currentMessages.length) {
             set({ messages: newMessages });
           }
         }
@@ -486,6 +488,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     // 2. Real user? Send to Supabase
     try {
+      console.log("[MSG] Sending to", to, "text:", text.substring(0, 30));
       const { data, error } = await supabase
         .from("messages")
         .insert({ from_user: currentUser.id, to_user: to, text })
@@ -493,7 +496,20 @@ export const useStore = create<AppState>((set, get) => ({
         .single();
 
       if (error) {
-        console.error("Failed to send message:", error);
+        console.error("[MSG] Failed to send message:", error.message, error.details, error.hint);
+        // If it's a foreign key violation, the recipient may have been deleted
+        // Still show the message locally so the sender sees it
+        const localMsg: Message = {
+          id: `local-${Date.now()}`,
+          from_user: currentUser.id,
+          to_user: to,
+          text,
+          created_at: new Date().toISOString(),
+          from: currentUser.id,
+          to: to,
+          timestamp: Date.now()
+        };
+        set((state) => ({ messages: [...state.messages, localMsg] }));
         return;
       }
 
