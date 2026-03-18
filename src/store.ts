@@ -88,6 +88,7 @@ interface AppState {
 
 let demoInterval: any = null;
 let heartbeatInterval: any = null;
+let cleanupHandler: (() => void) | null = null;
 const KIGALI_CENTER = { lat: -1.9441, lng: 30.0619 };
 
 export const useStore = create<AppState>((set, get) => ({
@@ -104,13 +105,16 @@ export const useStore = create<AppState>((set, get) => ({
       return "Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.";
     }
 
-    // 1. Insert user into Supabase (Default to Kigali)
+    // ──────────────────────────────────────────
+    // FIX #1: Insert as is_online: TRUE so the user is immediately visible
+    // FIX #4: Set last_seen to now so they pass any freshness filters
+    // ──────────────────────────────────────────
     const { data: userData, error } = await supabase
       .from("users")
       .insert({ 
         name, 
         role, 
-        is_online: false, 
+        is_online: true,         // ← was false, making users invisible on join
         is_premium: false,
         lat: KIGALI_CENTER.lat,
         lng: KIGALI_CENTER.lng,
@@ -127,12 +131,13 @@ export const useStore = create<AppState>((set, get) => ({
     const currentUser = mapUser(userData);
     set({ currentUser });
 
-    // 2. Fetch all existing users (only active in last 5 min)
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // ──────────────────────────────────────────
+    // FIX #4: Fetch ALL users, no last_seen filter.
+    // We rely on is_online for visibility, not timestamps.
+    // ──────────────────────────────────────────
     const { data: allUsers } = await supabase
       .from("users")
-      .select("*")
-      .gt("last_seen", fiveMinAgo);
+      .select("*");
 
     if (allUsers) {
       set({ users: allUsers.map(mapUser) });
@@ -160,8 +165,11 @@ export const useStore = create<AppState>((set, get) => ({
 
           if (payload.eventType === "INSERT") {
             const newUser = mapUser(payload.new);
-            console.log("New user joined:", newUser.name);
-            set({ users: [...users, newUser] });
+            // Avoid duplicates
+            if (!users.find((u) => u.id === newUser.id)) {
+              console.log("[RT] New user joined:", newUser.name);
+              set({ users: [...users, newUser] });
+            }
           } else if (payload.eventType === "UPDATE") {
             const updatedUser = mapUser(payload.new);
             const exists = users.find((u) => u.id === updatedUser.id);
@@ -171,14 +179,14 @@ export const useStore = create<AppState>((set, get) => ({
                 users: users.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
               });
             } else {
-              // UPSERT: Add user if they weren't in our list (e.g. they were stale)
-              console.log("User became active:", updatedUser.name);
+              // UPSERT: user wasn't in our list yet
+              console.log("[RT] User appeared:", updatedUser.name);
               set({ users: [...users, updatedUser] });
             }
 
             // Update currentUser if it's us
-            const { currentUser } = get();
-            if (currentUser && currentUser.id === updatedUser.id) {
+            const { currentUser: cu } = get();
+            if (cu && cu.id === updatedUser.id) {
               set({ currentUser: updatedUser });
             }
           } else if (payload.eventType === "DELETE") {
@@ -193,12 +201,12 @@ export const useStore = create<AppState>((set, get) => ({
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
           const newMessage = mapMessage(payload.new);
-          const { currentUser, messages } = get();
+          const { currentUser: cu, messages } = get();
 
           // Only add if it involves us
           if (
-            currentUser &&
-            (newMessage.from_user === currentUser.id || newMessage.to_user === currentUser.id)
+            cu &&
+            (newMessage.from_user === cu.id || newMessage.to_user === cu.id)
           ) {
             // Avoid duplicates
             if (!messages.find((m) => m.id === newMessage.id)) {
@@ -211,38 +219,58 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ channel });
 
-    // 5. Start Heartbeat (every 5s for "Live" feel)
+    // ──────────────────────────────────────────
+    // 5. Heartbeat every 5 seconds
+    // ──────────────────────────────────────────
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(async () => {
-      const { currentUser } = get();
-      if (currentUser) {
+      const { currentUser: cu } = get();
+      if (cu) {
         try {
           await supabase
             .from("users")
             .update({ last_seen: new Date().toISOString() })
-            .eq("id", currentUser.id);
+            .eq("id", cu.id);
         } catch (err) {
           console.error("Heartbeat failed:", err);
         }
       }
     }, 5000);
 
-    // 6. Cleanup — mark user offline and delete
-    const cleanupUser = async () => {
-      const { currentUser } = get();
-      if (currentUser) {
-        try {
-          // Use synchronous-looking but backgrounded delete
-          await supabase.from("users").delete().eq("id", currentUser.id);
-        } catch (e) {
-          console.error("Cleanup error:", e);
+    // ──────────────────────────────────────────
+    // FIX #3: Remove old cleanup listeners before adding new ones
+    // This prevents stacking and double-delete crashes
+    // ──────────────────────────────────────────
+    if (cleanupHandler) {
+      window.removeEventListener("beforeunload", cleanupHandler);
+      window.removeEventListener("pagehide", cleanupHandler);
+    }
+
+    cleanupHandler = () => {
+      const { currentUser: cu } = get();
+      if (cu) {
+        // Use navigator.sendBeacon for reliable cleanup on mobile
+        if (navigator.sendBeacon && supabaseConfigured) {
+          const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/users?id=eq.${cu.id}`;
+          const headers = {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          };
+          // sendBeacon can't do DELETE, so we set is_online = false instead
+          navigator.sendBeacon(
+            `${url}&select=id`,
+            new Blob([JSON.stringify({ is_online: false })], { type: 'application/json' })
+          );
         }
+        // Also try the normal Supabase call (works in desktop browsers)
+        supabase.from("users").delete().eq("id", cu.id).then();
       }
     };
 
-    window.addEventListener("beforeunload", cleanupUser);
-    window.addEventListener("unload", cleanupUser);
-    window.addEventListener("pagehide", cleanupUser); // Better for mobile safari/chrome
+    window.addEventListener("beforeunload", cleanupHandler);
+    window.addEventListener("pagehide", cleanupHandler);
 
     return null; // success
   },
@@ -272,6 +300,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ──────────────────────────────────────────
+  // FIX #2: toggleOnline now also updates last_seen
+  // so the user immediately appears fresh to others
+  // ──────────────────────────────────────────
   toggleOnline: async (isOnline) => {
     const { currentUser } = get();
     if (!currentUser) return;
@@ -280,10 +312,14 @@ export const useStore = create<AppState>((set, get) => ({
       currentUser: { ...currentUser, is_online: isOnline, isOnline },
     });
 
-    await supabase
-      .from("users")
-      .update({ is_online: isOnline })
-      .eq("id", currentUser.id);
+    try {
+      await supabase
+        .from("users")
+        .update({ is_online: isOnline, last_seen: new Date().toISOString() })
+        .eq("id", currentUser.id);
+    } catch (err) {
+      console.error("Toggle online failed:", err);
+    }
   },
 
   togglePremium: async (isPremium) => {
@@ -294,10 +330,14 @@ export const useStore = create<AppState>((set, get) => ({
       currentUser: { ...currentUser, is_premium: isPremium, isPremium },
     });
 
-    await supabase
-      .from("users")
-      .update({ is_premium: isPremium })
-      .eq("id", currentUser.id);
+    try {
+      await supabase
+        .from("users")
+        .update({ is_premium: isPremium })
+        .eq("id", currentUser.id);
+    } catch (err) {
+      console.error("Toggle premium failed:", err);
+    }
   },
 
   toggleDemoMode: (enabled) => {
@@ -309,16 +349,14 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (enabled) {
       const { currentUser } = get();
-      const baseLat = currentUser?.lat || 37.7749;
-      const baseLng = currentUser?.lng || -122.4194;
+      const baseLat = currentUser?.lat || KIGALI_CENTER.lat;
+      const baseLng = currentUser?.lng || KIGALI_CENTER.lng;
 
       const oppositeRole = currentUser?.role === "driver" ? "passenger" : "driver";
       const namePrefix = oppositeRole === "driver" ? "Driver " : "Passenger ";
 
-      // Generate valid UUIDs for fake drivers so they pass UI validation if needed
-      // but we will still intercept their messages below
       const initialFakeUsers: User[] = Array.from({ length: 4 }).map((_, i) => ({
-        id: `demo-driver-${i}`, // Kept for identification in sendMessage
+        id: `demo-driver-${i}`,
         name: `${namePrefix}${["Alice", "Bob", "Charlie", "Diana"][i]}`,
         role: oppositeRole,
         lat: baseLat + (Math.random() - 0.5) * 0.02,
@@ -361,7 +399,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     // 1. Is it a fake user? Bypass Supabase entirely!
     if (to.startsWith("demo-driver-")) {
-      // Create a fake local message for the OUTGOING text
       const fakeOutgoingMsg: Message = {
         id: `local-msg-${Date.now()}`,
         from_user: currentUser.id,
@@ -382,45 +419,51 @@ export const useStore = create<AppState>((set, get) => ({
       const driverRole = driverObj ? driverObj.role : "driver";
 
       setTimeout(async () => {
-        const aiReply = await generateDriverResponse(driverName, text, driverRole);
-        
-        // Create fake local message for INCOMING text
-        const fakeIncomingMsg: Message = {
-          id: `local-msg-${Date.now() + 1}`,
-          from_user: to,
-          to_user: currentUser.id,
-          text: aiReply,
-          created_at: new Date().toISOString(),
-          from: to,
-          to: currentUser.id,
-          timestamp: Date.now() + 1
-        };
+        try {
+          const aiReply = await generateDriverResponse(driverName, text, driverRole);
+          
+          const fakeIncomingMsg: Message = {
+            id: `local-msg-${Date.now() + 1}`,
+            from_user: to,
+            to_user: currentUser.id,
+            text: aiReply,
+            created_at: new Date().toISOString(),
+            from: to,
+            to: currentUser.id,
+            timestamp: Date.now() + 1
+          };
 
-        set((state) => ({ messages: [...state.messages, fakeIncomingMsg] }));
-      }, 1500 + Math.random() * 2000); // 1.5 to 3.5 sec delay
+          set((state) => ({ messages: [...state.messages, fakeIncomingMsg] }));
+        } catch (err) {
+          console.error("AI response failed:", err);
+        }
+      }, 1500 + Math.random() * 2000);
       
-      return; // Stop here, do not hit Supabase!
-    }
-
-    // 2. Real user? Send to Supabase
-    const { data, error } = await supabase
-      .from("messages")
-      .insert({ from_user: currentUser.id, to_user: to, text })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Failed to send message:", error);
       return;
     }
 
-    // Add locally immediately (realtime will also fire, but we deduplicate)
-    if (data) {
-      const msg = mapMessage(data);
-      const { messages } = get();
-      if (!messages.find((m) => m.id === msg.id)) {
-        set({ messages: [...messages, msg] });
+    // 2. Real user? Send to Supabase
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({ from_user: currentUser.id, to_user: to, text })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Failed to send message:", error);
+        return;
       }
+
+      if (data) {
+        const msg = mapMessage(data);
+        const { messages } = get();
+        if (!messages.find((m) => m.id === msg.id)) {
+          set({ messages: [...messages, msg] });
+        }
+      }
+    } catch (err) {
+      console.error("Send message error:", err);
     }
   },
 
@@ -436,6 +479,15 @@ export const useStore = create<AppState>((set, get) => ({
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
-    set({ currentUser: null, users: [], messages: [], channel: null });
+    if (demoInterval) {
+      clearInterval(demoInterval);
+      demoInterval = null;
+    }
+    if (cleanupHandler) {
+      window.removeEventListener("beforeunload", cleanupHandler);
+      window.removeEventListener("pagehide", cleanupHandler);
+      cleanupHandler = null;
+    }
+    set({ currentUser: null, users: [], messages: [], channel: null, fakeUsers: [], demoMode: false });
   },
 }));

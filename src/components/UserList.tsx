@@ -16,7 +16,7 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
     );
   }
 
-  const visibilityRadius = currentUser.isPremium ? 5 : 1; // km
+  const VISIBILITY_KM = 50; // Match MapView
 
   // If offline, you don't see anyone
   const allUsers = currentUser.isOnline ? [...users, ...(demoMode ? fakeUsers : [])] : [];
@@ -27,9 +27,6 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
     if (!u.location) return false;
     if (u.role === currentUser.role) return false;
 
-    // Removed aggressive client-side stale check (fails on clock drift)
-    // Relying on is_online and server-side gt(last_seen) filtering in the store
-
     const distance = getDistance(
       currentUser.location!.lat,
       currentUser.location!.lng,
@@ -37,7 +34,7 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
       u.location.lng
     );
 
-    return distance <= 50; // Increased to 50km for demo sync
+    return distance <= VISIBILITY_KM;
   });
 
   return (
@@ -46,9 +43,15 @@ export default function UserList({ onSelectUser }: { onSelectUser: (user: User) 
         Nearby {currentUser.role === 'driver' ? 'Passengers' : 'Drivers'}
       </h2>
       
-      {visibleUsers.length === 0 ? (
+      {!currentUser.isOnline ? (
+        <div className="text-center py-10 bg-red-50 rounded-lg border border-red-200 shadow-sm">
+          <p className="text-red-600 font-bold">You are OFFLINE</p>
+          <p className="text-red-500 text-sm mt-1">Go to Settings → toggle "Go Online" to see others.</p>
+        </div>
+      ) : visibleUsers.length === 0 ? (
         <div className="text-center py-10 bg-white rounded-lg border border-gray-200 shadow-sm">
-          <p className="text-gray-500">No one nearby within {visibilityRadius}km.</p>
+          <p className="text-gray-500">No {currentUser.role === 'driver' ? 'passengers' : 'drivers'} found nearby.</p>
+          <p className="text-gray-400 text-sm mt-1">Make sure others are online with an opposite role.</p>
         </div>
       ) : (
         <div className="space-y-3">
