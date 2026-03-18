@@ -109,9 +109,9 @@ export default function App() {
 
         setToast({ text: lastMsg.text, from: senderName });
         
-        // Auto-dismiss toast after 4 seconds
+        // Auto-dismiss toast after 5 seconds (standard)
         if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToast(null), 4000);
+        toastTimer.current = setTimeout(() => setToast(null), 5000);
 
         // Vibrate on mobile if supported
         if (navigator.vibrate) {
@@ -250,24 +250,27 @@ export default function App() {
 
   return (
     <div style={{ height: '100dvh' }} className="flex flex-col bg-gray-100 overflow-hidden">
-      {/* ── Toast Notification ── */}
+      {/* ── Toast Notification (positioned below the header) ── */}
       {toast && (
         <div 
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] animate-slide-down cursor-pointer"
+          className="fixed left-0 right-0 z-50 px-3 animate-slide-down cursor-pointer"
+          style={{ top: '68px' }}
           onClick={() => {
             setToast(null);
             handleMessagesTab();
           }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl border border-indigo-100 p-4 flex items-start gap-3">
-            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-indigo-200 p-3 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
               {toast.from.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900">{toast.from}</p>
+              <p className="text-sm font-bold text-gray-900 truncate">{toast.from}</p>
               <p className="text-sm text-gray-600 truncate">{toast.text}</p>
             </div>
-            <span className="text-xs text-indigo-500 font-medium whitespace-nowrap">Tap to view</span>
+            <div className="flex-shrink-0 bg-indigo-50 rounded-full px-3 py-1">
+              <span className="text-xs text-indigo-600 font-bold whitespace-nowrap">View</span>
+            </div>
           </div>
         </div>
       )}
