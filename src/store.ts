@@ -234,20 +234,52 @@ export const useStore = create<AppState>((set, get) => ({
     set({ channel });
 
     // ──────────────────────────────────────────
-    // 5. Heartbeat every 5 seconds
+    // 5. Heartbeat & Polling Fallback (every 5 seconds)
     // ──────────────────────────────────────────
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(async () => {
-      const { currentUser: cu } = get();
-      if (cu) {
-        try {
-          await supabase
-            .from("users")
-            .update({ last_seen: new Date().toISOString() })
-            .eq("id", cu.id);
-        } catch (err) {
-          console.error("Heartbeat failed:", err);
+      const { currentUser: cu, messages: currentMessages } = get();
+      if (!cu) return;
+
+      // A. Send Heartbeat
+      try {
+        await supabase
+          .from("users")
+          .update({ last_seen: new Date().toISOString() })
+          .eq("id", cu.id);
+      } catch (err) {
+        console.error("Heartbeat failed:", err);
+      }
+
+      // B. FALLBACK: Poll for users (guarantees sync even if WebSockets fail)
+      try {
+        const { data: allUsers } = await supabase.from("users").select("*");
+        if (allUsers) {
+          // Keep currentUser instance intact to avoid unnecessary re-renders of own state
+          const mappedUsers = allUsers.map(mapUser).map(u => u.id === cu.id ? cu : u);
+          set({ users: mappedUsers });
         }
+      } catch (err) {
+        console.error("User poll failed:", err);
+      }
+
+      // C. FALLBACK: Poll for messages
+      try {
+        const { data: existingMsgs } = await supabase
+          .from("messages")
+          .select("*")
+          .or(`from_user.eq.${cu.id},to_user.eq.${cu.id}`)
+          .order("created_at", { ascending: true });
+        
+        if (existingMsgs) {
+          const newMessages = existingMsgs.map(mapMessage);
+          // Only update state if length changed to prevent React component thrashing
+          if (newMessages.length !== currentMessages.length) {
+            set({ messages: newMessages });
+          }
+        }
+      } catch (err) {
+        console.error("Message poll failed:", err);
       }
     }, 5000);
 
