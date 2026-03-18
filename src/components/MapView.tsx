@@ -427,7 +427,7 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
 
       {/* Legend / Info Overlay — hidden during navigation */}
       {!routeTo && (
-        <div className="absolute top-4 right-4 bg-white p-3 rounded-xl shadow-lg z-[1000] text-sm border border-gray-100">
+        <div className="absolute top-20 right-4 bg-white p-3 rounded-xl shadow-lg z-[10] text-sm border border-gray-100">
           <h4 className="font-semibold mb-2 text-gray-900">Nearby {currentUser.role === 'driver' ? 'Passengers' : 'Drivers'}</h4>
           <div className="flex items-center gap-2 mb-1">
             <div className="w-3 h-3 rounded-full bg-red-500"></div>

@@ -65,7 +65,7 @@ export default function App() {
             retryTimeout = setTimeout(() => startWatching(false), 3000);
           }
         },
-        { enableHighAccuracy: highAccuracy, maximumAge: 15000, timeout: 10000 }
+        { enableHighAccuracy: highAccuracy, maximumAge: 30000, timeout: 15000 }
       );
     };
 
