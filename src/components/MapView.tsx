@@ -425,36 +425,6 @@ export default function MapView({ onSelectUser }: { onSelectUser: (user: User) =
         </div>
       )}
 
-      {/* Legend / Info Overlay — hidden during navigation */}
-      {!routeTo && (
-        <div className="absolute top-20 right-4 bg-white p-3 rounded-xl shadow-lg z-[10] text-sm border border-gray-100">
-          <h4 className="font-semibold mb-2 text-gray-900">Nearby {currentUser.role === 'driver' ? 'Passengers' : 'Drivers'}</h4>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-gray-600">Driver</span>
-          </div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span className="text-gray-600">Passenger</span>
-          </div>
-          <div className="text-xs text-gray-400 font-medium">
-            Showing within {visibilityRadius}km
-          </div>
-          {!currentUser.isOnline ? (
-            <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-red-600 font-bold animate-pulse">
-              You are OFFLINE. Go to Settings and toggle "Go Online" to see others.
-            </div>
-          ) : visibleUsers.length === 0 && (
-            <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-amber-600 font-medium">
-              {allUsers.length > 1 ? (
-                <span>Found {allUsers.length - 1} others, but they are either the same role or &gt; {visibilityRadius}km away.</span>
-              ) : (
-                <span>No {currentUser.role === 'driver' ? 'passengers' : 'drivers'} found within {visibilityRadius}km</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
