@@ -113,8 +113,8 @@ export default function Settings() {
                   <Shield size={24} />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900 text-lg">Pitch Demo Mode</p>
-                  <p className="text-sm text-gray-500">Simulate fake moving people for UNIPOD</p>
+                  <p className="font-semibold text-gray-900 text-lg">Demo Mode</p>
+                  <p className="text-sm text-gray-500">Simulate fake moving people</p>
                 </div>
               </div>
               <button
